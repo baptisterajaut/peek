@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=peek
+Comment=Tiny popup AI assistant with self-curated memory
+Exec=PEEK_SCRIPT_PATH
+Icon=dialog-information
+Terminal=false
+Categories=Utility;
+X-KDE-StartupNotify=false
+X-GNOME-Autostart-enabled=true

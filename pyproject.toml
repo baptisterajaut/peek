@@ -1,0 +1,38 @@
+[project]
+name = "peek"
+version = "0.1.0"
+description = "Tiny popup AI assistant with self-curated memory"
+requires-python = ">=3.11"
+license = { text = "Public Domain" }
+dependencies = [
+    "openai>=1.50",
+    "httpx>=0.27",
+    "PySide6>=6.7",
+    "dbus-next>=0.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+peek = "peek.__main__:main"
+peek-cli = "peek.cli:main"
+peek-setup = "peek.setup:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["peek*"]
+
+[tool.setuptools.package-data]
+peek = ["personalities/*.md"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
