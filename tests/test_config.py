@@ -35,3 +35,27 @@ def test_overrides_loaded(tmp_path: Path):
     assert cfg.thinking is True
     assert cfg.temperature == 0.3
     assert cfg.personality == "creative"
+
+
+def test_model_options_typed(tmp_path: Path):
+    p = tmp_path / "peek.conf"
+    p.write_text(
+        "[model_options]\n"
+        "repeat_penalty = 1.1\n"
+        "repeat_last_n = 64\n"
+        "top_p = 0.95\n"
+        "min_p = 0.05\n"
+        "seed = -1\n"
+        "use_cache = true\n"
+        "stop = </s>\n"
+        "empty =\n",
+        encoding="utf-8",
+    )
+    cfg = Config.load(p)
+    assert cfg.model_options["repeat_penalty"] == 1.1
+    assert cfg.model_options["repeat_last_n"] == 64
+    assert cfg.model_options["top_p"] == 0.95
+    assert cfg.model_options["seed"] == -1
+    assert cfg.model_options["use_cache"] is True
+    assert cfg.model_options["stop"] == "</s>"
+    assert "empty" not in cfg.model_options  # blank values dropped

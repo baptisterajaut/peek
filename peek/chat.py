@@ -117,6 +117,7 @@ class Chat:
                 tools=tools_schema or None,
                 temperature=self.config.temperature,
                 thinking=self.config.thinking,
+                extra_body=self.config.model_options or None,
             )
 
             assistant_content = ""

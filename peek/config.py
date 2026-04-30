@@ -17,6 +17,7 @@ from __future__ import annotations
 import configparser
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 CONFIG_DIR = Path.home() / ".config" / "peek"
 CONFIG_PATH = CONFIG_DIR / "config.conf"
@@ -35,6 +36,10 @@ class Config:
     model: str = "default"
     temperature: float | None = None
     thinking: bool | None = None  # None = server default
+    # Pass-through generation options sent as extra_body to the backend.
+    # Any key llama.cpp accepts works (repeat_penalty, repeat_last_n, top_p,
+    # top_k, min_p, presence_penalty, frequency_penalty, seed, …).
+    model_options: dict = field(default_factory=dict)
 
     # Memory
     memory_dir: Path = field(default_factory=lambda: DEFAULT_MEMORY_DIR)
@@ -84,6 +89,9 @@ class Config:
         cfg.search_api_key = parser.get("search", "api_key", fallback=cfg.search_api_key)
         cfg.searxng_url = parser.get("search", "searxng_url", fallback=cfg.searxng_url)
 
+        if parser.has_section("model_options"):
+            cfg.model_options = _parse_model_options(parser["model_options"])
+
         return cfg
 
     def write_default_if_missing(self, path: Path | None = None) -> bool:
@@ -114,6 +122,35 @@ def update_personality(name: str, path: Path | None = None) -> None:
         parser.write(f)
 
 
+def _parse_model_options(section) -> dict[str, Any]:
+    """Coerce values from a configparser section to bool/int/float/str.
+
+    Empty values are skipped. The dict is passed straight through to the
+    backend as extra_body — any key llama.cpp accepts works.
+    """
+    out: dict[str, Any] = {}
+    for key in section:
+        raw = section.get(key, "").strip()
+        if not raw:
+            continue
+        low = raw.lower()
+        if low in ("true", "false"):
+            out[key] = low == "true"
+            continue
+        try:
+            out[key] = int(raw)
+            continue
+        except ValueError:
+            pass
+        try:
+            out[key] = float(raw)
+            continue
+        except ValueError:
+            pass
+        out[key] = raw
+    return out
+
+
 _DEFAULT_CONFIG_TEXT = """\
 # peek configuration. All values are optional — defaults shown.
 
@@ -141,4 +178,16 @@ binding = ALT+X
 # provider = tavily
 # api_key =
 # searxng_url =
+
+# Pass-through llama.cpp generation options. Anything in this section is
+# forwarded as extra_body. Common knobs:
+#   repeat_penalty = 1.1
+#   repeat_last_n = 64
+#   top_p = 0.95
+#   top_k = 40
+#   min_p = 0.05
+#   presence_penalty = 0
+#   frequency_penalty = 0
+#   seed = -1
+[model_options]
 """
