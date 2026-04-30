@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -195,6 +196,20 @@ QLineEdit {
 }
 QLineEdit:focus {
     border-color: #2563eb;
+}
+QPushButton#cancelBtn {
+    background-color: #4a1a1a;
+    color: #ff8a8a;
+    border: 1px solid #7a2a2a;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+QPushButton#cancelBtn:hover {
+    background-color: #5a2020;
+}
+QPushButton#cancelBtn:pressed {
+    background-color: #6a2828;
 }
 QScrollBar:vertical {
     background: transparent;
@@ -421,10 +436,22 @@ class Popup(QWidget):
         self.scroll.setWidget(self.transcript)
         outer.addWidget(self.scroll, 1)
 
+        # Input row: text field + cancel button (button hidden until busy).
+        input_row = QHBoxLayout()
+        input_row.setContentsMargins(0, 0, 0, 0)
+        input_row.setSpacing(4)
         self.input = QLineEdit()
         self.input.setPlaceholderText("ask peek…")
         self.input.returnPressed.connect(self._on_submit)
-        outer.addWidget(self.input, 0)
+        input_row.addWidget(self.input, 1)
+        self.cancel_btn = QPushButton("✕ stop")
+        self.cancel_btn.setObjectName("cancelBtn")
+        self.cancel_btn.setVisible(False)
+        self.cancel_btn.setCursor(Qt.PointingHandCursor)
+        self.cancel_btn.setFocusPolicy(Qt.NoFocus)
+        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        input_row.addWidget(self.cancel_btn, 0)
+        outer.addLayout(input_row, 0)
 
     def _wire_worker(self) -> None:
         self.worker.delta.connect(self._on_delta)
@@ -545,13 +572,23 @@ class Popup(QWidget):
         self._busy = busy
         self.input.setEnabled(not busy)
         self.input.setPlaceholderText("…" if busy else "ask peek…")
+        self.cancel_btn.setVisible(busy)
         if not busy:
             self.input.setFocus()
+
+    def _on_cancel_clicked(self) -> None:
+        if self._busy:
+            self.worker.cancel()
 
     # ----- key handling --------------------------------------------------
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
+            # Esc while generating = cancel (don't close+flush). Esc while
+            # idle = close+flush as before.
+            if self._busy:
+                self.worker.cancel()
+                return
             self._handle_close()
             return
         if event.key() == Qt.Key_C and event.modifiers() & Qt.ControlModifier:
