@@ -1,5 +1,7 @@
 # peek
 
+*Basically [ochat](https://github.com/baptisterajaut/ollama-chat) but on the side.*
+
 Tiny popup AI assistant. Hotkey → small floating window → ask → close. The model curates its own memory between sessions.
 
 Linux first (KDE/Wayland via GlobalShortcuts portal). llama.cpp server backend.
