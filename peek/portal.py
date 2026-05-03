@@ -119,6 +119,13 @@ class HotkeyPortal(QObject):
 
     def stop(self) -> None:
         self._stop.set()
+        # Block briefly so the worker thread can actually disconnect the bus
+        # in its finally clause. Daemon threads are killed at interpreter
+        # shutdown without running their finally — losing that means KDE
+        # never learns our session ended and re-prompts on next launch.
+        thread = getattr(self, "_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
 
     def _run(self) -> None:
         loop = asyncio.new_event_loop()
@@ -154,6 +161,18 @@ class HotkeyPortal(QObject):
 
     async def _main(self) -> None:
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        try:
+            await self._run_portal(bus)
+        finally:
+            # Drop the DBus connection so the portal tears the session down —
+            # otherwise KGlobalAccel keeps thinking our binding is live and
+            # re-prompts on the next daemon start with "already assigned".
+            try:
+                bus.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def _run_portal(self, bus) -> None:
         portal_intro = Node.parse(_GLOBAL_SHORTCUTS_XML)
         proxy = bus.get_proxy_object(PORTAL_BUS, PORTAL_PATH, portal_intro)
         gs = proxy.get_interface("org.freedesktop.portal.GlobalShortcuts")
@@ -201,9 +220,36 @@ class HotkeyPortal(QObject):
             self.failed.emit(f"BindShortcuts refused (code={resp['code']})")
             return
 
-        ids = ", ".join(s[0] for s in self._shortcuts)
-        self.bound.emit(f"shortcuts registered: {ids}")
-        _log.info("shortcuts bound")
+        # KDE's portal returns code=0 even when the user dismisses the
+        # conflict dialog — it just leaves trigger_description empty in the
+        # shortcuts array. Without this check we'd claim "registered" while
+        # the keys never fire. Inspect the actual bindings.
+        shortcuts_var = resp["results"].get("shortcuts")
+        bound_pairs: list[tuple[str, str]] = []
+        unbound_ids: list[str] = []
+        if shortcuts_var is not None:
+            for entry in shortcuts_var.value:
+                sid, opts = entry
+                td = opts.get("trigger_description")
+                trigger = td.value if td is not None else ""
+                if trigger:
+                    bound_pairs.append((sid, trigger))
+                else:
+                    unbound_ids.append(sid)
+
+        if unbound_ids:
+            msg = (
+                f"portal returned no trigger for {', '.join(unbound_ids)} — "
+                f"likely a shortcut conflict. Bind manually in "
+                f"System Settings → Shortcuts."
+            )
+            _log.warning(msg)
+            self.failed.emit(msg)
+            return
+
+        summary = ", ".join(f"{sid} → {trig}" for sid, trig in bound_pairs)
+        self.bound.emit(f"shortcuts active: {summary}")
+        _log.info("shortcuts bound: %s", summary)
 
         # ----- 3. Listen for Activated -------------------------------------
         def on_activated(_session, shortcut_id, _timestamp, _options) -> None:
@@ -211,6 +257,8 @@ class HotkeyPortal(QObject):
 
         gs.on_activated(on_activated)
 
-        # Keep the loop alive until told to stop.
+        # Keep the loop alive until told to stop. Short poll so stop() lands
+        # quickly and the bus.disconnect() in _main's finally has time to run
+        # before the daemon thread is reaped.
         while not self._stop.is_set():
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
