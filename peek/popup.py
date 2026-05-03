@@ -86,17 +86,20 @@ class ChatWorker(QObject):
             self._loop.close()
 
     def shutdown(self) -> None:
-        # Best-effort: close the backend's network resources on the worker's
-        # loop before stopping it.
-        if self._loop and self._loop.is_running():
-            try:
-                fut = asyncio.run_coroutine_threadsafe(
-                    self.chat.backend.close(), self._loop,
-                )
-                fut.result(timeout=1.0)
-            except Exception:  # noqa: BLE001
-                pass
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        # Run close() inside the loop, then stop the loop from inside it —
+        # this lets the coroutine actually complete (vs. fire-and-forget,
+        # which leaves a "Task pending" warning at interpreter shutdown).
+        # The wait_for caps the worst case if the network teardown stalls.
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            async def _shutdown() -> None:
+                try:
+                    await asyncio.wait_for(self.chat.backend.close(), timeout=0.5)
+                except Exception:  # noqa: BLE001
+                    pass
+                loop.stop()
+
+            asyncio.run_coroutine_threadsafe(_shutdown(), loop)
         self._thread.join(timeout=1.0)
 
     def send(self, text: str) -> None:

@@ -308,6 +308,16 @@ class Daemon(QObject):
             self.popup.show()
 
     def _quit(self) -> None:
+        # Defer the actual teardown one event-loop tick. Tray > Quit fires
+        # from inside the QMenu action callback while the menu is still
+        # closing — running cleanup synchronously from there caused the
+        # portal worker thread to be killed mid-sleep before its DBus
+        # disconnect ran, leaving an orphaned session in KGlobalAccel.
+        QTimer.singleShot(0, self._do_quit)
+
+    def _do_quit(self) -> None:
+        self._tray.hide()
+        self.popup.hide()
         self._portal.stop()
         self._ipc.close()
         self.worker.shutdown()
@@ -332,6 +342,13 @@ def main() -> int:
             return 0
         print(f"unknown command: {cmd!r} (try `peek help`)", file=sys.stderr)
         return 2
+
+    # Refuse to start a second daemon — duplicates fight over the IPC socket
+    # and the portal binding (re-triggers KDE's "already assigned" dialog).
+    from peek.ipc import is_daemon_running
+    if is_daemon_running():
+        print("peek daemon is already running (use `peek toggle`)", file=sys.stderr)
+        return 0
 
     # First-run wizard: config missing AND running interactively.
     from peek.config import CONFIG_PATH

@@ -90,3 +90,18 @@ def send_command(cmd: str) -> bool:
         return True
     except OSError:
         return False
+
+
+def is_daemon_running() -> bool:
+    """Probe the IPC socket — distinguishes a live daemon from a stale path."""
+    p = socket_path()
+    if not p.exists():
+        return False
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(0.2)
+        s.connect(str(p))
+        s.close()
+        return True
+    except OSError:
+        return False
