@@ -427,6 +427,15 @@ class Popup(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Sticky-bottom scroll. _add_bubble's singleShot(0) fires before the
+        # layout settles, so it scrolls to the *previous* max. rangeChanged
+        # fires after layout — follow the new bottom, but only when the user
+        # was already there (so scrolling up to read history mid-stream
+        # doesn't yank them back down on every token).
+        bar = self.scroll.verticalScrollBar()
+        self._stick_to_bottom = True
+        bar.valueChanged.connect(self._on_scroll_value)
+        bar.rangeChanged.connect(self._on_scroll_range)
 
         self.transcript = QWidget()
         self.transcript_layout = QVBoxLayout(self.transcript)
@@ -509,8 +518,21 @@ class Popup(QWidget):
         return bubble
 
     def _scroll_to_bottom(self) -> None:
+        # Force-stick on explicit calls (e.g. send pressed) — even if the user
+        # had scrolled up earlier, sending a new message snaps back to the
+        # newest content.
+        self._stick_to_bottom = True
         bar = self.scroll.verticalScrollBar()
         bar.setValue(bar.maximum())
+
+    def _on_scroll_value(self, value: int) -> None:
+        bar = self.scroll.verticalScrollBar()
+        # 8px slop — Qt occasionally reports a few px off the exact max.
+        self._stick_to_bottom = value >= bar.maximum() - 8
+
+    def _on_scroll_range(self, _min: int, _max: int) -> None:
+        if self._stick_to_bottom:
+            self.scroll.verticalScrollBar().setValue(_max)
 
     # ----- events --------------------------------------------------------
 
