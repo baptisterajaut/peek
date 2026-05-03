@@ -31,4 +31,25 @@ if [ ! -f "$MARKER" ] || [ "$PYPROJECT" -nt "$MARKER" ]; then
     touch "$MARKER"
 fi
 
-exec "$VENV/bin/peek" "$@"
+# IPC subcommands (toggle/show/hide/quit/setup/help) talk to the running
+# daemon — they can run anywhere.
+if [ $# -gt 0 ]; then
+    exec "$VENV/bin/peek" "$@"
+fi
+
+# Daemon mode — anchor the cgroup. KDE's portal-kde derives its shortcut
+# component name from the cgroup of the calling process. Launching peek.sh
+# from Konsole vs Dolphin vs KRunner produces three different cgroups, so
+# the alt+x binding ends up split across components and silently fails.
+# systemd-run --user wraps us in a deterministic `app-peek@<uuid>.service`,
+# giving the portal a stable app id ("peek") forever. It returns
+# immediately (the unit runs detached), so the launching shell gets its
+# prompt back. Logs land in journald: `journalctl --user -u 'app-peek@*'`.
+if [[ "$(cat /proc/self/cgroup)" =~ app-peek@ ]]; then
+    exec "$VENV/bin/peek"
+fi
+
+UUID=$(tr -d - < /proc/sys/kernel/random/uuid)
+exec systemd-run --user --quiet --collect \
+    --unit="app-peek@${UUID}.service" \
+    "$VENV/bin/peek"
