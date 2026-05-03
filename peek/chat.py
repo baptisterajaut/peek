@@ -13,6 +13,7 @@ Yields typed events to the UI:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -21,7 +22,9 @@ from peek.backend import Backend
 from peek.config import Config
 from peek.memory.store import MemoryStore
 from peek.personality import load as load_personality
-from peek.tools import ToolContext, all_schemas, dispatch
+from peek.tools import ToolContext, all_schemas, dispatch, register_optional_tools
+
+_log = logging.getLogger(__name__)
 
 ONBOARDING_BLOCK = """\
 [FIRST-CONTACT MODE — memory is empty]
@@ -73,6 +76,7 @@ class Chat:
         backend = backend or Backend(
             host=config.host, verify_ssl=config.verify_ssl, api_key=config.api_key,
         )
+        _log.info(register_optional_tools(config))
         personality_text = load_personality(config.personalities_dir, config.personality)
         system = assemble_system_prompt(personality_text, store.assemble_for_prompt())
         return cls(

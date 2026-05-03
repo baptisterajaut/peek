@@ -67,3 +67,35 @@ async def dispatch(ctx: ToolContext, name: str, arguments_json: str) -> str:
 
 # Side-effect imports register tools into _REGISTRY.
 from peek.tools import websearch, fetch, note_for_later, read_memory, forget_memory  # noqa: E402,F401
+
+
+_workspace_registered = False
+
+
+def register_optional_tools(config: Config) -> str:
+    """Register read_file/write_file/run_shell once if the environment allows.
+
+    Gated on bwrap availability OR the explicit unsafe-flag in config — see
+    peek/tools/workspace.py. Returns a one-line status suitable for logging.
+    Idempotent: subsequent calls report status without re-registering.
+    """
+    global _workspace_registered
+    from peek.tools.sandbox import bwrap_path, ensure_workspace
+    from peek.tools.workspace import WORKSPACE, register_workspace_tools
+
+    bwrap = bwrap_path()
+    if bwrap:
+        mode = "sandboxed (bwrap)"
+    elif config.unsafe_no_sandbox:
+        mode = "UNSANDBOXED (unsafe flag set)"
+    else:
+        return (
+            "workspace tools disabled: bwrap not on PATH and "
+            "[sandbox] i_dont_care_if_an_agent_wipes_my_files is false"
+        )
+
+    if not _workspace_registered:
+        ensure_workspace()
+        register_workspace_tools()
+        _workspace_registered = True
+    return f"workspace tools enabled — {mode} — workspace={WORKSPACE}"

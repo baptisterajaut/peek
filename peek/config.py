@@ -56,6 +56,11 @@ class Config:
     search_api_key: str = ""
     searxng_url: str = ""
 
+    # Sandbox. read/write/run_shell tools require bwrap by default. Set the
+    # flag to True to enable them WITHOUT a sandbox — the agent then has raw
+    # filesystem access to /tmp/peek and can shell out arbitrarily on the host.
+    unsafe_no_sandbox: bool = False
+
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":
         path = path or CONFIG_PATH
@@ -88,6 +93,12 @@ class Config:
         cfg.search_provider = parser.get("search", "provider", fallback=cfg.search_provider)
         cfg.search_api_key = parser.get("search", "api_key", fallback=cfg.search_api_key)
         cfg.searxng_url = parser.get("search", "searxng_url", fallback=cfg.searxng_url)
+
+        cfg.unsafe_no_sandbox = parser.getboolean(
+            "sandbox",
+            "i_dont_care_if_an_agent_wipes_my_files",
+            fallback=cfg.unsafe_no_sandbox,
+        )
 
         if parser.has_section("model_options"):
             cfg.model_options = _parse_model_options(parser["model_options"])
@@ -178,6 +189,14 @@ binding = ALT+X
 # provider = tavily
 # api_key =
 # searxng_url =
+
+# read_file / write_file / run_shell tools. By default they require
+# `bwrap` (bubblewrap) on PATH so script execution is confined to
+# /tmp/peek with no network. If bwrap is missing the tools are not
+# registered. Flip the flag below to enable them WITHOUT any sandbox —
+# the agent gets raw shell access to your machine.
+[sandbox]
+# i_dont_care_if_an_agent_wipes_my_files = false
 
 # Pass-through llama.cpp generation options. Anything in this section is
 # forwarded as extra_body. Common knobs:
